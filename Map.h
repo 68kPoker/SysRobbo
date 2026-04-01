@@ -23,24 +23,24 @@
 
 typedef struct Block
 {
-	Type type;
-	short dir, counter;
-	short frame;
-	Bool scanned;
+    Type type;
+    short dir, counter;
+    short frame;
+    Bool scanned;
 } Block;
 
 typedef struct Map
 {
-	Block blocks[ MAP_HEIGHT ][ MAP_WIDTH ], *cur, *robbo;
-	struct Screws
-	{
-		short collected, required;
-	} screws;
-	short keys, ammo, lives;
-	short dir;
-	Bool fire;
-	short delay;
-	short done;
+    Block blocks[ MAP_HEIGHT ][ MAP_WIDTH ], *cur, *robbo;
+    struct Screws
+    {
+        short collected, required;
+    } screws;
+    short keys, ammo, lives;
+    short dir;
+    Bool fire;
+    short delay;
+    short done;
 } Map;
 
 extern void scanMap( Map *map );
