@@ -47,5 +47,6 @@ extern void scanMap( Map *map );
 extern void sumBase( void );
 extern short get( Map *map, Block *me ); /* Get animation frame */
 extern void clearMap( Map *map );
+extern void updateMap( Map *map, struct RastPort *rp, short frame, short left, short top, struct BitMap *gfx, struct BitMap *mbm );
 
 #endif

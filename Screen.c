@@ -6,6 +6,7 @@
 #include <clib/graphics_protos.h>
 #include <clib/iffparse_protos.h>
 #include <clib/exec_protos.h>
+#include <clib/layers_protos.h>
 
 #include <assert.h>
 
@@ -15,8 +16,8 @@
 
 #define RGB(c) ( (c) | ((c)<<8) | ((c)<<16) | ((c)<<24) )
 
-extern WORD *obtainPens( struct ColorMap *cm, struct IFFHandle *iff, WORD *pcount );
-extern void releasePens( struct ColorMap *cm, WORD *pens, WORD count );
+WORD *obtainPens( struct ColorMap *cm, struct IFFHandle *iff, WORD *pcount );
+void releasePens( struct ColorMap *cm, WORD *pens, WORD count );
 
 struct IFFHandle *openILBM( STRPTR name )
 {
@@ -210,7 +211,21 @@ struct BitMap *readPicture( struct IFFHandle *iff )
 struct Window *openScreen( UBYTE depth, struct IFFHandle *iff, WORD **pens, WORD *pcount )
 {
     struct Screen *s;
-    WORD pens[] = { ~0 };
+    WORD dri_Pens[ NUMDRIPENS + 1 ];
+
+    dri_Pens[ BACKGROUNDPEN ] = 0;
+    dri_Pens[ SHINEPEN ] = 2;
+    dri_Pens[ SHADOWPEN ] = 1;
+    dri_Pens[ BLOCKPEN ] = 0;
+    dri_Pens[ DETAILPEN ] = 3;
+    dri_Pens[ HIGHLIGHTTEXTPEN ] = 2;
+    dri_Pens[ FILLPEN ] = 3;
+    dri_Pens[ FILLTEXTPEN ] = 2;
+    dri_Pens[ BARBLOCKPEN ] = 2;
+    dri_Pens[ BARDETAILPEN ] = 1;
+    dri_Pens[ BARTRIMPEN ] = 1;
+    dri_Pens[ NUMDRIPENS ] = ~0;
+    dri_Pens[ TEXTPEN ] = 1;
 
     if( s = OpenScreenTags( NULL,
         SA_DisplayID, PAL_MONITOR_ID | LORES_KEY,
@@ -220,8 +235,10 @@ struct Window *openScreen( UBYTE depth, struct IFFHandle *iff, WORD **pens, WORD
         SA_ShowTitle, FALSE,
         SA_BackFill, LAYERS_NOBACKFILL,
         SA_SharePens, TRUE,
-        SA_Pens, pens,
+        SA_Pens, dri_Pens,
         SA_Title, "SysRobbo Screen",
+        SA_Interleaved, TRUE,
+        SA_SysFont, 1,
         TAG_DONE ) )
     {
         if( *pens = obtainPens( s->ViewPort.ColorMap, iff, pcount ) )
@@ -239,12 +256,27 @@ struct Window *openScreen( UBYTE depth, struct IFFHandle *iff, WORD **pens, WORD
                 WA_SimpleRefresh, TRUE,
                 WA_BackFill, LAYERS_NOBACKFILL,
                 WA_Activate, TRUE,
-                WA_IDCMP, IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE | IDCMP_REFRESHWINDOW | IDCMP_RAWKEY,
+                WA_BlockPen, 1,
+                WA_DetailPen, 12,
+                WA_IDCMP, IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE | IDCMP_REFRESHWINDOW | IDCMP_RAWKEY | IDCMP_GADGETUP | IDCMP_CLOSEWINDOW,
+                WA_GimmeZeroZero, FALSE,
                 TAG_DONE ) )
             {
-                return( w );
+                if( w->UserData = NewRegion() )
+                {
+                    struct Rectangle rect;
+                    rect.MinX = w->BorderLeft;
+                    rect.MinY = w->BorderTop;
+                    rect.MaxX = rect.MinX + w->GZZWidth - 1;
+                    rect.MaxY = rect.MinY + w->GZZHeight - 1;
+
+                    OrRectRegion( w->UserData, &rect );
+                    InstallClipRegion( w->WLayer, w->UserData );
+                    return( w );
+                }
+                CloseWindow( w );
             }
-            releasePens( s->ViewPort.ColorMap, pens, *pcount );
+            releasePens( s->ViewPort.ColorMap, *pens, *pcount );
         }
         CloseScreen( s );
     }
@@ -255,6 +287,8 @@ void closeScreen( struct Window *w, WORD *pens, WORD count )
 {
     struct Screen *s = w->WScreen;
 
+    InstallClipRegion( w->WLayer, NULL );
+    DisposeRegion( w->UserData );
     CloseWindow( w );
     releasePens( s->ViewPort.ColorMap, pens, count );    
     CloseScreen( s );    
@@ -281,7 +315,7 @@ static WORD *obtainPens( struct ColorMap *cm, struct IFFHandle *iff, WORD *pcoun
                 UBYTE green = *data++;
                 UBYTE blue = *data++;
 
-                pens[ i ] = ObtainPen( cm, i, RGB( red ), RGB( green ), RGB( blue ), 0 );
+                SetRGB32CM( cm, i, RGB( red ), RGB( green ), RGB( blue ) );
             }
             *pcount = count;
             return( pens );
@@ -292,6 +326,7 @@ static WORD *obtainPens( struct ColorMap *cm, struct IFFHandle *iff, WORD *pcoun
 
 static void releasePens( struct ColorMap *cm, WORD *pens, WORD count )
 {
+#if 0
     WORD i;
 
     for( i = 0; i < count; i++ )
@@ -301,6 +336,7 @@ static void releasePens( struct ColorMap *cm, WORD *pens, WORD count )
             ReleasePen( cm, pens[ count - 1 - i ] );
         }
     }
+#endif
     FreeVec( pens );
 }
 
@@ -330,7 +366,7 @@ BOOL remapPicture( struct BitMap *bm, struct ColorMap *cm, struct IFFHandle *iff
                 UBYTE green = *data++;
                 UBYTE blue = *data++;
 
-                pens[ i ] = FindColor( cm, RGB( red ), RGB( green ), RGB( blue ), maxPen );
+                pens[ i ] = FindColor( cm, RGB( red ), RGB( green ), RGB( blue ), maxPen );                
             }
 
             if( buffer = AllocMem( width, MEMF_PUBLIC ) )
@@ -340,21 +376,21 @@ BOOL remapPicture( struct BitMap *bm, struct ColorMap *cm, struct IFFHandle *iff
                 InitRastPort( &rp );
                 temprp = rp;
                 rp.BitMap = bm;
-                if( temprp.BitMap = AllocBitMap( width, 1, depth, BMF_INTERLEAVED, NULL ) )
+                if( temprp.BitMap = AllocBitMap( width, 1, depth, BMF_INTERLEAVED | BMF_CLEAR, NULL ) )
                 {
                     WORD y;
 
                     for( y = 0; y < height; y++ )
                     {
                         WORD x;
-                        ReadPixelLine8( &rp, 0, i, width, buffer, &temprp );
+                        ReadPixelLine8( &rp, 0, y, width, buffer, &temprp );
 
                         for( x = 0; x < width; x++ )
                         {
                             buffer[ x ] = pens[ buffer[ x ] ];
                         }
 
-                        WritePixelLine8( &rp, 0, i, width, buffer, &temprp );
+                        WritePixelLine8( &rp, 0, y, width, buffer, &temprp );
                     }
 
                     result = TRUE;

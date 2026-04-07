@@ -15,7 +15,7 @@ __far
 #endif
 extern struct Custom custom;
 
-static void drawIcon( struct BitMap *sbm, WORD sx, WORD sy, struct BitMap *dbm, WORD dx, WORD dy, WORD width, WORD height, UBYTE minterm, UBYTE mask, struct BitMap *mbm, WORD mx, WORD my )
+void drawIcon( struct BitMap *sbm, WORD sx, WORD sy, struct BitMap *dbm, WORD dx, WORD dy, WORD width, WORD height, UBYTE minterm, UBYTE mask, struct BitMap *mbm, WORD mx, WORD my )
 {
     struct Custom *c;    
     WORD bpr;
@@ -45,7 +45,7 @@ static void drawIcon( struct BitMap *sbm, WORD sx, WORD sy, struct BitMap *dbm, 
     {
         bpr = mbm->BytesPerRow;
 
-        mplane = mbm->Planes[ 0 ] + bpr * my + ( ( mx >> 4 ) << 1 );
+        mplane = mbm->Planes[ mbm->Depth - 1 ] + bpr * my + ( ( mx >> 4 ) << 1 );
         mmod = bpr - ( wwidth << 1 );
     }
 

@@ -1,0 +1,27 @@
+
+#MYLIBS= LIB:debug.lib
+
+CC = sc
+ASM = asm
+
+CFLAGS  = data=near nominc streq nostkchk incdir=IFF:
+AFLAGS  = -iINCLUDE:
+LINKER  = slink
+LFLAGS  = SMALLCODE BATCH NODEBUG
+STARTUP = LIB:c.o
+LIBS    = LIB:sc.lib, LIB:amiga.lib
+
+.SUFFIXES:
+.SUFFIXES:	.o .c .h .asm .i
+
+APP = Robbo
+APPO = Test.o Screen.o Input.o Blitter.o Type.o
+
+all: $(APP)
+
+$(APP): $(APPO)
+  $(LINKER) <WITH <
+FROM $(STARTUP) $(APPO)
+LIBRARY $(LIBS) $(MYLIBS)
+TO $(APP) $(LFLAGS)
+<

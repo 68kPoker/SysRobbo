@@ -3,8 +3,7 @@
 #include <stdlib.h>
 
 #include "Map.h"
-
-void  Delay(time) {}
+#include "Blitter.h"
 
 #include "debug.h"
 
@@ -113,14 +112,12 @@ void scanMap( Map *map )
     Block *block;
     short x, y;
 
-    D( bug( "Scan:\n" ) );
-
     for( y = 0; y < MAP_HEIGHT; y++ )
     {
         block = map->blocks[ y ];
 
         for( x = 0; x < MAP_WIDTH; x++ )
-        {						
+        {
             scan( map, block + x );
         }
     }
@@ -155,11 +152,9 @@ static void set( Map *map, Block *me, short dir, short as, short frame )
 {
     Bool move = dir && as == me[ -dir ].type;
 
-    D( bug( "Set %16s (%16s) %d %6sat %2d/%2d\n", name[ as ], name[ me->type ], frame, dirName( dir ), ( int )( me - map->blocks[ 0 ] ) % DOWN, ( int )( me - map->blocks[ 0 ] ) / DOWN ) );
-
     me->type = as;
     me->dir = dir;
-    
+
     me->frame = frame;
     me->counter = 0;
 
@@ -174,7 +169,6 @@ static void update( Map *map, Block *me, short dir, short frame )
 {
     me->dir = dir;
     me->frame = frame;
-    D( bug( "Upd %16s %d %6sat %2d/%2d\n", name[ me->type ], frame, dirName( dir ), ( int )( me - map->blocks[ 0 ] ) % DOWN, ( int )( me - map->blocks[ 0 ] ) / DOWN ) );
 }
 
 static void scanBullet( Map *map, Block *me )
@@ -243,7 +237,7 @@ static void scanRobbo( Map *map, Block *me )
     short i, type;
     static short dirs[] = { LEFT, UP, RIGHT, DOWN };
 
-    for( i = 0; i < 4; i++ ) 
+    for( i = 0; i < 4; i++ )
     {
         type = me[ dirs[ i ] ].type;
         if( isHostile( type ) )
@@ -295,7 +289,7 @@ static void scanRobbo( Map *map, Block *me )
         {
             if( enter( map, me + dir, dir, BULLET, 0 ) != BLOCK )
             {
-                map->ammo--;				
+                map->ammo--;
             }
             map->fire = NIL;
         }
@@ -491,7 +485,7 @@ static void scanBatShoot( Map *map, Block *me )
 }
 
 static void scanCreatureLeft( Map *map, Block *me )
-{ 
+{
     short dir = me->dir;
     short dest = getAntiClockWise( dir );
 
@@ -500,12 +494,12 @@ static void scanCreatureLeft( Map *map, Block *me )
         set( map, me, 0, SPACE, 0 );
         return;
     }
-    
+
     if( enter( map, me + dir, dir, me->type, me->frame ) == ACCEPT )
     {
         set( map, me, 0, SPACE, 0 );
         return;
-    }	
+    }
 
     update( map, me, getClockWise( dir ), me->frame );
 }
@@ -539,14 +533,14 @@ static void scanEyes( Map *map, Block *me )
     if( diff > 0 )
     {
         dx = SIGN( diff % DOWN );
-        dy = SIGN( diff / DOWN );		
+        dy = SIGN( diff / DOWN );
     }
     else
     {
         diff = -diff;
         dx = -SIGN( diff % DOWN );
         dy = -SIGN( diff / DOWN );
-    }	
+    }
 
     if( rnd < 0x80 || dy == 0 )
     {
@@ -556,7 +550,7 @@ static void scanEyes( Map *map, Block *me )
     {
         dir = dy * DOWN;
     }
-    
+
     if( enter( map, me + dir, dir, me->type, me->frame ) )
     {
         set( map, me, 0, SPACE, 0 );
@@ -711,7 +705,7 @@ static Result enterStream( Map *map, Block *me, short dir, short as, short frame
 
 static Result enterTeleport( Map *map, Block *me, short dir, short as, short frame )
 {
-    Block *tele = me++,  *last = map->blocks[ MAP_HEIGHT - 2 ] + MAP_WIDTH - 2;
+    Block *tele = me++, *last = map->blocks[ MAP_HEIGHT - 2 ] + MAP_WIDTH - 2;
     short counter = me->counter;
     short orig = dir, i;
 
@@ -823,7 +817,7 @@ void scanSurpriseShow( Map *map, Block *me )
 
 void sumBase( void )
 {
-    short i, sum = 0, add;
+    short i, sum = 1, add;
     Props *prop;
 
     for( i = 0; i < TYPES; i++ )
@@ -845,14 +839,14 @@ void sumBase( void )
 
 short get( Map *map, Block *me )
 {
-    short type = me->type;	
+    short type = me->type;
     Props *prop = props + type;
     short frame = 0;
 
     if( prop->flags & DIR )
     {
         short dir = me->dir, i;
-        
+
         if( dir == LEFT )
         {
             i = 0;
@@ -878,11 +872,35 @@ short get( Map *map, Block *me )
     return( frame );
 }
 
+#define WIDTH  16
+#define HEIGHT 10
+
+void updateMap( Map *map, struct RastPort *rp, short frame, short left, short top, struct BitMap *gfx, struct BitMap *mbm )
+{
+    short x, y;
+    static short icons[ 2 ][ HEIGHT ][ WIDTH ];
+    short icon;
+
+    for( y = 0; y < HEIGHT; y++ )
+    {
+        for( x = 0; x < WIDTH; x++ )
+        {
+            Block *me = map->blocks[ top + y ] + left + x;
+
+            if( ( icon = props[ me->type ].base + get( map, me ) ) != icons[ frame ][ y ][ x ] )
+            {
+                icons[ frame ][ y ][ x ] = icon;
+                drawIconRastPort( gfx, ( icon % 20 ) << 4, ( icon / 20 ) << 4, rp, 16 + ( x << 4 ), 32 + ( y << 4 ), 16, 16, 0xc0, mbm, 16 + ( x << 4 ), 32 + ( y << 4 ) );
+            }
+        }
+    }
+}
+
 static Props props[ TYPES ] =
 {
     { enterSpace, NIL, 0, 1 },
     { enterWall, NIL, 0, 1 },
-    { enterRobbo, scanRobbo, DIR, 4 },
+    { enterRobbo, scanRobbo, DIR, 2 },
     { enterScrew, NIL, 0, 1 },
     { enterKey, NIL, 0, 1 },
     { enterAmmo, NIL, 0, 1 },
@@ -896,17 +914,17 @@ static Props props[ TYPES ] =
     { enterWall, NIL, DIR, 2 },
     { enterWall, scanBeamExtend, DIR, 2 },
     { enterWall, scanBeamShrink, DIR, 2 },
-    { enterStream, scanStream, DIR, 4 },
-    { enterWall, scanFire, 0, 4 },
+    { enterStream, scanStream, DIR, 3 },
     { enterWall, scanFire, 0, 3 },
+    { enterWall, scanFire, 0, 2 },
     { enterWall, scanCannon, DIR, 1 },
     { enterWall, scanCannonRotate, DIR, 1 },
     { enterWall, scanCannonMove, 0, 1 },
     { enterWall, scanLaser, DIR, 1 },
     { enterWall, scanBlaster, DIR, 1 },
     { enterTeleport, NIL, 0, 2 },
-    { enterWall, scanFire, 0, 4 },
-    { enterWall, scanTeleportOut, 0, 4 },
+    { enterWall, scanFire, 0, 3 },
+    { enterWall, scanTeleportOut, 0, 3 },
     { enterWall, NIL, 0, 1 },
     { enterWall, NIL, 0, 1 },
     { enterWall, scanBat, 0, 2 },
@@ -915,7 +933,7 @@ static Props props[ TYPES ] =
     { enterWall, scanCreatureRight, 0, 2 },
     { enterWall, scanEyes, 0, 2 },
     { enterSurprise, NIL, 0, 1 },
-    { enterWall, scanSurpriseShow, 0, 3 },
+    { enterWall, scanSurpriseShow, 0, 2 },
     { enterExtraLife, NIL, 0, 1 },
     { enterCapsule, NIL, 0, 2 }
 };
